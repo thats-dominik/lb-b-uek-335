@@ -3,12 +3,13 @@
     "name": "trackit",
     "slug": "trackit",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "jsEngine": "jsc",
+    "sdkVersion": "53.0.0",
+    "platforms": ["ios", "android"],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
