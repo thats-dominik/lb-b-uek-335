@@ -20,36 +20,17 @@ const { width, height } = Dimensions.get('window');
 export default function HomeScreen({ navigation }) {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [isPressed, setIsPressed] = useState(false);
-  const [selectedCarrier, setSelectedCarrier] = useState(null);
-  const [showCarrierPicker, setShowCarrierPicker] = useState(false);
-
-  // Verfügbare Carrier
-  const carriers = [
-    { code: null, name: '🤖 Automatisch erkennen', icon: 'scan' },
-    { code: 'dhl', name: 'DHL', icon: 'cube' },
-    { code: 'ups', name: 'UPS', icon: 'airplane' },
-    { code: 'fedex', name: 'FedEx', icon: 'flash' },
-    { code: 'swisspost', name: 'Swiss Post', icon: 'mail' },
-    { code: 'chinapost', name: 'China Post', icon: 'location' },
-    { code: 'tnt', name: 'TNT', icon: 'rocket' },
-    { code: 'deutschepost', name: 'Deutsche Post', icon: 'send' },
-    { code: 'hermes', name: 'Hermes', icon: 'car' },
-    { code: 'dpd', name: 'DPD', icon: 'business' }
-  ];
 
   const handleTrackPress = () => {
     if (!trackingNumber.trim()) {
-      alert('Bitte eine Sendungsnummer eingeben');
+      alert('Bitte eine Swiss Post Sendungsnummer eingeben');
       return;
     }
     
-    // Sendungsnummer UND optional gewählten Carrier übergeben
-    const params = { 
-      trackingNumber: trackingNumber.trim(),
-      ...(selectedCarrier && { manualCarrier: selectedCarrier })
-    };
-    
-    navigation.navigate('Detail', params);
+    // Nur noch Tracking-Nummer übergeben - Swiss Post ist immer der Carrier
+    navigation.navigate('Detail', { 
+      trackingNumber: trackingNumber.trim()
+    });
   };
 
   return (
@@ -80,29 +61,29 @@ export default function HomeScreen({ navigation }) {
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.title}>TrackIt</Text>
+            <Text style={styles.title}>Swiss Post Tracker</Text>
             <Text style={styles.subtitle}>
-              Verfolge deine Pakete automatisch
+              Verfolge deine Swiss Post Pakete in Echtzeit
             </Text>
           </View>
 
           <View style={styles.content}>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>📦 Sendung verfolgen</Text>
+              <Text style={styles.cardTitle}>📮 Swiss Post Sendung verfolgen</Text>
               <Text style={styles.cardSubtitle}>
-                Gib eine Sendungsnummer ein. Optional kannst du den Paketdienst auswählen für genauere Ergebnisse.
+                Gib deine Swiss Post Sendungsnummer ein und erhalte aktuelle Tracking-Informationen direkt vom Schweizer Post-Service.
               </Text>
               
               <View style={styles.inputContainer}>
                 <View style={styles.inputWrapper}>
                   <Ionicons 
-                    name="search" 
+                    name="mail" 
                     size={20} 
                     color="#6B7280" 
                     style={styles.inputIcon}
                   />
                   <TextInput
-                    placeholder="Sendungsnummer eingeben..."
+                    placeholder="Swiss Post Sendungsnummer..."
                     placeholderTextColor="#9CA3AF"
                     value={trackingNumber}
                     onChangeText={setTrackingNumber}
@@ -118,72 +99,15 @@ export default function HomeScreen({ navigation }) {
                 </View>
               </View>
 
-              {/* Carrier Picker */}
-              <View style={styles.carrierContainer}>
-                <Text style={styles.carrierLabel}>Paketdienst (optional):</Text>
-                <TouchableOpacity
-                  style={styles.carrierSelector}
-                  onPress={() => setShowCarrierPicker(!showCarrierPicker)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons 
-                    name={selectedCarrier ? carriers.find(c => c.code === selectedCarrier)?.icon || 'cube' : 'scan'} 
-                    size={20} 
-                    color="#6366F1" 
-                  />
-                  <Text style={styles.carrierSelectorText}>
-                    {selectedCarrier 
-                      ? carriers.find(c => c.code === selectedCarrier)?.name || 'Unbekannt'
-                      : '🤖 Automatisch erkennen'
-                    }
-                  </Text>
-                  <Ionicons 
-                    name={showCarrierPicker ? "chevron-up" : "chevron-down"} 
-                    size={16} 
-                    color="#6366F1" 
-                  />
-                </TouchableOpacity>
-
-                {/* Carrier Options */}
-                {showCarrierPicker && (
-                  <View style={styles.carrierOptions}>
-                    <ScrollView 
-                      style={styles.carrierScrollView}
-                      nestedScrollEnabled={true}
-                      showsVerticalScrollIndicator={false}
-                    >
-                      {carriers.map((carrier) => (
-                        <TouchableOpacity
-                          key={carrier.code || 'auto'}
-                          style={[
-                            styles.carrierOption,
-                            selectedCarrier === carrier.code && styles.carrierOptionSelected
-                          ]}
-                          onPress={() => {
-                            setSelectedCarrier(carrier.code);
-                            setShowCarrierPicker(false);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons 
-                            name={carrier.icon} 
-                            size={18} 
-                            color={selectedCarrier === carrier.code ? "#6366F1" : "#6B7280"} 
-                          />
-                          <Text style={[
-                            styles.carrierOptionText,
-                            selectedCarrier === carrier.code && styles.carrierOptionTextSelected
-                          ]}>
-                            {carrier.name}
-                          </Text>
-                          {selectedCarrier === carrier.code && (
-                            <Ionicons name="checkmark" size={16} color="#6366F1" />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
+              {/* Swiss Post Info Box */}
+              <View style={styles.swissPostInfo}>
+                <View style={styles.swissPostHeader}>
+                  <Ionicons name="information-circle" size={20} color="#6366F1" />
+                  <Text style={styles.swissPostInfoTitle}>Swiss Post Format</Text>
+                </View>
+                <Text style={styles.swissPostInfoText}>
+                  Unterstützte Formate: 99.xx.xxxxxx.xxxxxxxx oder andere Swiss Post Nummern
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -200,13 +124,13 @@ export default function HomeScreen({ navigation }) {
                   end={{ x: 1, y: 0 }}
                 >
                   <Ionicons 
-                    name={selectedCarrier ? "search" : "scan"} 
+                    name="search" 
                     size={20} 
                     color="#fff" 
                     style={styles.buttonIcon} 
                   />
                   <Text style={styles.primaryButtonText}>
-                    {selectedCarrier ? "Direkt verfolgen" : "Automatisch verfolgen"}
+                    Swiss Post verfolgen
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -214,55 +138,49 @@ export default function HomeScreen({ navigation }) {
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerText}>
-                  {selectedCarrier ? "Manuell ausgewählt" : "Mit Auto-Erkennung"}
+                  Powered by Swiss Post Scraper
                 </Text>
                 <View style={styles.dividerLine} />
               </View>
+              
+              {/* Benefits */}
+              <View style={styles.benefits}>
+                <View style={styles.benefit}>
+                  <Ionicons name="shield-checkmark" size={16} color="#10B981" />
+                  <Text style={styles.benefitText}>Direkt von Swiss Post</Text>
+                </View>
+                <View style={styles.benefit}>
+                  <Ionicons name="flash" size={16} color="#F59E0B" />
+                  <Text style={styles.benefitText}>Echtzeit Updates</Text>
+                </View>
+                <View style={styles.benefit}>
+                  <Ionicons name="lock-closed" size={16} color="#6366F1" />
+                  <Text style={styles.benefitText}>Sicher & Privat</Text>
+                </View>
               </View>
             </View>
+          </View>
 
-            <View style={styles.features}>
-              <View style={styles.feature}>
-                <Ionicons name="scan" size={24} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.featureText}>Auto-Erkennung</Text>
-              </View>
-              <View style={styles.feature}>
-                <Ionicons name="time" size={24} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.featureText}>Echtzeit Updates</Text>
-              </View>
-              <View style={styles.feature}>
-                <Ionicons name="globe" size={24} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.featureText}>Weltweit verfügbar</Text>
-              </View>
+          <View style={styles.features}>
+            <View style={styles.feature}>
+              <Ionicons name="mail" size={24} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.featureText}>Swiss Post</Text>
             </View>
+            <View style={styles.feature}>
+              <Ionicons name="time" size={24} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.featureText}>Live Tracking</Text>
+            </View>
+            <View style={styles.feature}>
+              <Ionicons name="location" size={24} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.featureText}>Präzise Daten</Text>
+            </View>
+          </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
     </>
   );
 }
-
-const iconStyles = StyleSheet.create({
-  appIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 16, // Für abgerundete Ecken wie ein echtes App-Icon
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    // Optional: Hintergrund für besseren Kontrast
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 20,
-    padding: 16,
-  },
-});
 
 const styles = StyleSheet.create({
   container: {
@@ -283,11 +201,23 @@ const styles = StyleSheet.create({
     paddingTop: height * 0.1,
     paddingBottom: 40,
   },
-  iconWrapper: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 25,
-    padding: 15,
-    marginBottom: 20,
+  iconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    padding: 16,
+  },
+  appIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   title: {
     fontSize: 36,
@@ -305,9 +235,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingBottom: 20,
-  },
-  scrollContainer: {
-    flex: 1,
   },
   card: {
     backgroundColor: '#fff',
@@ -340,70 +267,6 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: 20,
   },
-  carrierContainer: {
-    marginBottom: 20,
-  },
-  carrierLabel: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  carrierSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 8,
-  },
-  carrierSelectorText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
-    marginLeft: 12,
-  },
-  carrierOptions: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginTop: 8,
-    maxHeight: 200,
-    overflow: 'hidden',
-  },
-  carrierScrollView: {
-    maxHeight: 200,
-  },
-  carrierOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  carrierOptionSelected: {
-    backgroundColor: '#EEF2FF',
-  },
-  carrierOptionText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-    marginLeft: 12,
-  },
-  carrierOptionTextSelected: {
-    color: '#6366F1',
-    fontWeight: '600',
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -422,6 +285,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
     fontWeight: '500',
+  },
+  swissPostInfo: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  swissPostHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  swissPostInfoTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6366F1',
+    marginLeft: 8,
+  },
+  swissPostInfoText: {
+    fontSize: 12,
+    color: '#6366F1',
+    lineHeight: 16,
   },
   primaryButton: {
     borderRadius: 16,
@@ -467,24 +354,25 @@ const styles = StyleSheet.create({
   dividerText: {
     marginHorizontal: 16,
     color: '#6B7280',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
   },
-  secondaryButton: {
+  benefits: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  benefit: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
   },
-  secondaryButtonText: {
-    color: '#6366F1',
-    fontSize: 16,
-    fontWeight: '600',
+  benefitText: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 4,
   },
   features: {
     flexDirection: 'row',

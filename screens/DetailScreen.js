@@ -15,230 +15,39 @@ import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
-// Kuaidi100 API Konfiguration
-const KUAIDI100_CONFIG = {
-  customer: 'eGCUPRzgaxXH1213', // Deine Customer ID
-  key: '35d2fdd21a31407aa4324f597ec6b06d', // Dein API Key
-  autoDetectUrl: 'https://www.kuaidi100.com/autonumber/auto',
-  trackingUrl: 'https://poll.kuaidi100.com/poll/query.do'
+// ✅ NUR NOCH SWISS POST SCRAPER API
+const fetchSwissPostData = async (trackingNumber) => {
+  try {
+    const response = await fetch(`http://10.73.4.33:3001/track?tracking=${trackingNumber}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}: Swiss Post Scraper nicht erreichbar`);
+    const data = await response.json();
+
+    if (!data.timeline || !Array.isArray(data.timeline)) throw new Error('Keine Tracking-Daten für diese Sendungsnummer gefunden');
+
+    // deliveryEstimate übernehmen
+    return {
+      state: '2',
+      ischeck: '1',
+      data: data.timeline.map(item => ({
+        ftime: `${item.date} ${item.time}`,
+        context: `【${item.location}】${item.desc}`
+      })),
+      deliveryEstimate: data.deliveryEstimate // <- NEU!
+    };
+  } catch (error) {
+    throw new Error(`Swiss Post Tracking fehlgeschlagen: ${error.message}`);
+  }
 };
 
 export default function DetailScreen({ navigation, route }) {
-  const { trackingNumber, manualCarrier } = route.params;
+  const { trackingNumber } = route.params; // Nur noch trackingNumber, kein manualCarrier
   const [isLoading, setIsLoading] = useState(true);
   const [packageData, setPackageData] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [detectedCarrier, setDetectedCarrier] = useState(null);
   const [deliveryEstimate, setDeliveryEstimate] = useState(null);
   const [isCalculatingEstimate, setIsCalculatingEstimate] = useState(false);
   const [estimateError, setEstimateError] = useState(null);
-
-  // Einfache MD5 Hash Funktion (für Signatur)
-  const md5Hash = (str) => {
-    // Vereinfachte MD5 - für Produktion crypto-js verwenden
-    let hash = 0;
-    if (str.length === 0) return hash.toString(16);
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16).padStart(32, '0');
-  };
-
-  // Intelligenter Fallback basierend auf Sendungsnummer-Charakteristiken
-  const getIntelligentFallback = (trackingNumber) => {
-    console.log('🧠 Using intelligent fallback for:', trackingNumber);
-    
-    // Basierend auf Länge und Format
-    if (trackingNumber.length === 9 && /^\d+$/.test(trackingNumber)) {
-      // 9 Ziffern: wahrscheinlich DHL Deutschland
-      return { code: 'dhl', name: 'DHL', confidence: 2 };
-    }
-    
-    if (trackingNumber.length === 10 && /^\d+$/.test(trackingNumber)) {
-      // 10 Ziffern: oft DHL Express (wie deine Sendung!)
-      return { code: 'dhl', name: 'DHL Express', confidence: 2 };
-    }
-    
-    if (trackingNumber.length >= 11 && trackingNumber.length <= 12 && /^\d+$/.test(trackingNumber)) {
-      // 11-12 Ziffern: Deutsche Post
-      return { code: 'deutschepost', name: 'Deutsche Post', confidence: 1 };
-    }
-    
-    if (trackingNumber.length === 13 && /^\d+$/.test(trackingNumber)) {
-      // 13 Ziffern: oft DHL oder Hermes
-      return { code: 'dhl', name: 'DHL', confidence: 1 };
-    }
-    
-    if (/^[A-Z]{2}\d+[A-Z]{2}$/.test(trackingNumber)) {
-      // Letter-Number-Letter Format: oft internationale Post
-      return { code: 'chinapost', name: 'China Post', confidence: 1 };
-    }
-    
-    // Standard Fallback
-    return { code: 'dhl', name: 'DHL (Auto-detected)', confidence: 1 };
-  };
-
-  // China Post / Cainiao Tracking
-  const fetchChinaPostData = async (trackingNumber) => {
-    try {
-      console.log('🇨🇳 Fetching China Post/AliExpress data for:', trackingNumber);
-      
-      // Versuche zuerst echte Kuaidi100 API mit richtigen China Post Codes
-      const chinaPostCodes = ['chinapost', 'ems', 'cainiao'];
-      
-      for (const code of chinaPostCodes) {
-        try {
-          console.log(`🔄 Trying carrier code: ${code}`);
-          
-          const param = {
-            com: code,
-            num: trackingNumber,
-            resultv2: '1'
-          };
-
-          const paramString = JSON.stringify(param);
-          const signString = paramString + KUAIDI100_CONFIG.key + KUAIDI100_CONFIG.customer;
-          const sign = md5Hash(signString);
-
-          const requestBody = new URLSearchParams({
-            customer: KUAIDI100_CONFIG.customer,
-            sign: sign,
-            param: paramString
-          });
-
-          const response = await fetch(KUAIDI100_CONFIG.trackingUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'User-Agent': 'Mozilla/5.0 (compatible; TrackIt/1.0)',
-              'Accept': 'application/json'
-            },
-            body: requestBody.toString()
-          });
-
-          if (response.ok) {
-            const responseText = await response.text();
-            const data = JSON.parse(responseText);
-            
-            if (data.message === 'ok' && data.data) {
-              console.log(`✅ Found tracking data with carrier: ${code}`);
-              return data.data;
-            }
-          }
-        } catch (error) {
-          console.log(`❌ Failed with carrier ${code}:`, error.message);
-          continue;
-        }
-      }
-      
-      // Fallback zu Demo-Daten für AliExpress
-      console.log('ℹ️ Using AliExpress demo data');
-      return {
-        state: '2', // in_transit
-        ischeck: '0', // Nicht verifiziert bei internationalen Sendungen
-        data: [
-          {
-            ftime: new Date().toISOString().slice(0, 16).replace('T', ' '),
-            context: '【Transit】Package is in transit to destination country'
-          },
-          {
-            ftime: new Date(Date.now() - 172800000).toISOString().slice(0, 16).replace('T', ' '),
-            context: '【China】Package departed from origin country'
-          },
-          {
-            ftime: new Date(Date.now() - 345600000).toISOString().slice(0, 16).replace('T', ' '),
-            context: '【Hangzhou】Package picked up by carrier'
-          },
-          {
-            ftime: new Date(Date.now() - 432000000).toISOString().slice(0, 16).replace('T', ' '),
-            context: '【AliExpress】Order shipped from seller'
-          }
-        ]
-      };
-      
-    } catch (error) {
-      console.log('ℹ️ Using China Post demo data (API not accessible)');
-      
-      return {
-        state: '2',
-        ischeck: '0',
-        data: [
-          {
-            ftime: new Date().toISOString().slice(0, 16).replace('T', ' '),
-            context: '【China Post】Package in transit - Demo mode'
-          }
-        ]
-      };
-    }
-  };
-
-  // Lokale Carrier-Erkennung für spezielle Formate
-  const detectLocalCarrier = (trackingNumber) => {
-    const patterns = [
-      // Swiss Post
-      {
-        pattern: /^99\.\d{2}\.\d{6}\.\d{8}$/,
-        carrier: { code: 'swisspost', name: 'Swiss Post', confidence: 4 }
-      },
-      // China Post / AliExpress Standard Shipping
-      {
-        pattern: /^[A-Z]{2}\d{9}[A-Z]{2}$/,
-        carrier: { code: 'chinapost', name: 'China Post', confidence: 3 }
-      },
-      // Deutsche Post / DHL (verschiedene Formate)
-      {
-        pattern: /^00\d{18}$/,
-        carrier: { code: 'dhl', name: 'DHL Express', confidence: 4 }
-      },
-      {
-        pattern: /^\d{9}$/,
-        carrier: { code: 'dhl', name: 'DHL', confidence: 3 }
-      },
-      {
-        pattern: /^\d{10}$/,
-        carrier: { code: 'dhl', name: 'DHL Express', confidence: 3 }
-      },
-      {
-        pattern: /^\d{11,12}$/,
-        carrier: { code: 'deutschepost', name: 'Deutsche Post', confidence: 2 }
-      },
-      // UPS
-      {
-        pattern: /^1Z[0-9A-Z]{16}$/,
-        carrier: { code: 'ups', name: 'UPS', confidence: 4 }
-      },
-      // FedEx
-      {
-        pattern: /^\d{12}$|^\d{14}$/,
-        carrier: { code: 'fedex', name: 'FedEx', confidence: 3 }
-      },
-      // TNT (echtes TNT Format - nur numerisch)
-      {
-        pattern: /^[0-9]{8,10}$/,
-        carrier: { code: 'tnt', name: 'TNT', confidence: 1 }
-      },
-      // AliExpress Cainiao
-      {
-        pattern: /^[A-Z]{2}\d{9,11}[A-Z]{2}$/,
-        carrier: { code: 'cainiao', name: 'Cainiao', confidence: 2 }
-      }
-    ];
-
-    console.log('🔍 Testing patterns for:', trackingNumber);
-
-    for (const pattern of patterns) {
-      if (pattern.pattern.test(trackingNumber)) {
-        console.log('🎯 Local pattern match:', pattern.carrier, 'with pattern:', pattern.pattern);
-        return pattern.carrier;
-      }
-    }
-
-    console.log('❌ No local pattern matched, trying Kuaidi100 API...');
-    return null;
-  };
 
   // Erweiterte Demo-Funktion mit konkretem Datum/Uhrzeit
   const calculateDeliveryEstimateWithDateTime = (packageLocation, userCoordinates) => {
@@ -255,26 +64,23 @@ export default function DetailScreen({ navigation, route }) {
     const currentHour = new Date().getHours();
     const isWeekend = [0, 6].includes(new Date().getDay());
     
-    // Intelligente Schätzung basierend auf Paketstandort und Tageszeit
+    // Swiss Post spezifische Schätzung basierend auf Standort
     if (packageLocation.toLowerCase().includes('zürich') || 
         packageLocation.toLowerCase().includes('zurich')) {
       // Lokal in Zürich - sehr schnell
       deliveryHours = isWeekend ? 4 : (currentHour > 16 ? 18 : 2);
     } else if (packageLocation.toLowerCase().includes('basel') || 
-               packageLocation.toLowerCase().includes('bern')) {
+               packageLocation.toLowerCase().includes('bern') ||
+               packageLocation.toLowerCase().includes('winterthur')) {
       // Schweizer Städte - schnell
       deliveryHours = isWeekend ? 8 : (currentHour > 14 ? 24 : 4);
-    } else if (packageLocation.toLowerCase().includes('deutschland') || 
-               packageLocation.toLowerCase().includes('german')) {
-      // Deutschland - mittel
-      deliveryHours = isWeekend ? 48 : (currentHour > 12 ? 36 : 12);
-    } else if (packageLocation.toLowerCase().includes('china') || 
-               packageLocation.toLowerCase().includes('asia')) {
-      // International - länger
-      deliveryHours = isWeekend ? 168 : (currentHour > 10 ? 120 : 72);
+    } else if (packageLocation.toLowerCase().includes('sortierzentrum') || 
+               packageLocation.toLowerCase().includes('bearbeitung')) {
+      // Im Sortierzentrum - mittel
+      deliveryHours = isWeekend ? 24 : (currentHour > 12 ? 36 : 8);
     } else {
-      // Standard europäisch
-      deliveryHours = isWeekend ? 24 : (currentHour > 15 ? 30 : 8);
+      // Standard Swiss Post
+      deliveryHours = isWeekend ? 24 : (currentHour > 15 ? 30 : 12);
     }
     
     // Zufällige Variation für Realismus (+/- 20%)
@@ -285,7 +91,7 @@ export default function DetailScreen({ navigation, route }) {
     const deliveryDate = new Date();
     deliveryDate.setHours(deliveryDate.getHours() + deliveryHours);
     
-    // Geschäftszeiten berücksichtigen (8-18 Uhr, Mo-Sa)
+    // Swiss Post Zustellzeiten (8-18 Uhr, Mo-Sa)
     if (deliveryDate.getHours() < 8) {
       deliveryDate.setHours(8 + Math.floor(Math.random() * 4)); // 8-12 Uhr
     } else if (deliveryDate.getHours() > 18) {
@@ -362,362 +168,51 @@ export default function DetailScreen({ navigation, route }) {
     }
   };
 
-  // Schritt 1: Carrier automatisch erkennen
-  const detectCarrier = async (trackingNumber) => {
-    try {
-      console.log('🔍 Detecting carrier for:', trackingNumber);
-      
-      // Zuerst lokale Patterns prüfen
-      const localCarrier = detectLocalCarrier(trackingNumber);
-      if (localCarrier) {
-        console.log('✅ Local carrier detected:', localCarrier);
-        return localCarrier;
-      }
+  // ✅ VEREINFACHTE TRACKING-FUNKTION - NUR SWISS POST
+const trackShipment = async () => {
+  try {
+    setError(null);
+    setIsLoading(true);
 
-      // Fallback: Kuaidi100 Auto-Detection versuchen
-      console.log('🌐 Trying Kuaidi100 auto-detection...');
-      
-      const response = await fetch(`${KUAIDI100_CONFIG.autoDetectUrl}?num=${trackingNumber}`, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; TrackIt/1.0)',
-          'Accept': 'application/json',
-          'Referer': 'https://www.kuaidi100.com/'
-        }
-      });
+    const trackingInfo = await fetchSwissPostData(trackingNumber);
 
-      console.log('📡 Carrier detection response status:', response.status);
-      
-      if (!response.ok) {
-        console.log('⚠️ Kuaidi100 API nicht erreichbar, verwende intelligenten Fallback');
-        return getIntelligentFallback(trackingNumber);
-      }
-
-      const responseText = await response.text();
-      console.log('📄 Raw carrier response:', responseText);
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('❌ Failed to parse carrier response:', parseError);
-        console.log('🔄 Fallback to intelligent detection');
-        return getIntelligentFallback(trackingNumber);
-      }
-
-      console.log('📦 Parsed carrier data:', data);
-      
-      if (data && Array.isArray(data) && data.length > 0) {
-        const carrier = data[0];
-        console.log('✅ API carrier match:', carrier);
-        
-        return {
-          code: carrier.comCode,
-          name: carrier.comName,
-          confidence: data.length
-        };
-      } else {
-        console.log('🔄 No API results, using intelligent fallback');
-        return getIntelligentFallback(trackingNumber);
-      }
-      
-    } catch (error) {
-      console.error('❌ Carrier Detection Error:', error);
-      throw new Error('Carrier-Erkennung fehlgeschlagen: ' + error.message);
-    }
-  };
-
-  // Schritt 2: Tracking-Daten abrufen
-  const fetchTrackingData = async (trackingNumber, carrierCode) => {
-    try {
-      console.log('📦 Fetching tracking data for:', trackingNumber, 'via', carrierCode);
-      
-      // Spezielle Behandlung für lokale Carrier
-      if (carrierCode === 'swisspost') {
-        return await fetchSwissPostData(trackingNumber);
-      }
-      
-      if (carrierCode === 'chinapost' || carrierCode === 'cainiao') {
-        return await fetchChinaPostData(trackingNumber);
-      }
-
-      // DHL hat mehrere Codes - versuche alle
-      if (carrierCode === 'dhl') {
-        return await fetchDHLData(trackingNumber);
-      }
-
-      // Standard Kuaidi100 API für andere Carrier
-      return await fetchStandardCarrierData(trackingNumber, carrierCode);
-      
-    } catch (error) {
-      console.error('❌ Tracking API Error:', error);
-      throw error;
-    }
-  };
-
-  // DHL-spezifisches Tracking mit mehreren Codes
-  const fetchDHLData = async (trackingNumber) => {
-    const dhlCodes = ['dhl', 'dhlde', 'dhlglobal', 'dhl_de', 'deutschepost'];
-    
-    console.log('🚛 Trying multiple DHL codes for:', trackingNumber);
-    
-    for (const code of dhlCodes) {
-      try {
-        console.log(`🔄 Trying DHL code: ${code}`);
-        const result = await fetchStandardCarrierData(trackingNumber, code);
-        console.log(`✅ Success with DHL code: ${code}`);
-        return result;
-      } catch (error) {
-        console.log(`❌ Failed with DHL code ${code}:`, error.message);
-        continue;
-      }
-    }
-    
-    // Alle DHL-Codes fehlgeschlagen - verwende Demo-Daten
-    console.log('ℹ️ All DHL codes failed, using demo data');
-    return {
-      state: '2', // in_transit
-      ischeck: '1',
-      data: [
-        {
-          ftime: new Date().toISOString().slice(0, 16).replace('T', ' '),
-          context: '【DHL】Sendung wird verarbeitet - API-Integration nicht verfügbar'
-        },
-        {
-          ftime: new Date(Date.now() - 86400000).toISOString().slice(0, 16).replace('T', ' '),
-          context: '【DHL Depot】Sendung wurde vom Absender abgeholt'
-        }
-      ]
-    };
-  };
-
-  // Standard Carrier API-Aufruf
-  const fetchStandardCarrierData = async (trackingNumber, carrierCode) => {
-    const param = {
-      com: carrierCode,
-      num: trackingNumber,
-      resultv2: '1'
+    const processedData = {
+      trackingNumber: trackingNumber,
+      carrier: 'Swiss Post',
+      carrierCode: 'swisspost',
+      status: getStatusFromState(trackingInfo.state),
+      statusText: getStatusText(trackingInfo.state),
+      isCheck: trackingInfo.ischeck === '1',
+      timeline: trackingInfo.data ? trackingInfo.data.map((item, index) => ({
+        date: item.ftime,
+        location: extractLocation(item.context),
+        status: getTimelineStatus(item.context, index === 0),
+        description: item.context,
+        icon: getTimelineIcon(item.context, index === 0),
+        isActive: index === 0
+      })).reverse() : [],
+      currentLocation: trackingInfo.data && trackingInfo.data.length > 0 ?
+        extractLocation(trackingInfo.data[0].context) : null,
+      confidence: 5,
+      lastUpdate: new Date().toISOString(),
+      isManualCarrier: false,
+      deliveryEstimate: trackingInfo.deliveryEstimate || null, // NEU
     };
 
-    const paramString = JSON.stringify(param);
-    console.log('📋 API param string:', paramString);
-    
-    // MD5 Signatur: MD5(param + key + customer)
-    const signString = paramString + KUAIDI100_CONFIG.key + KUAIDI100_CONFIG.customer;
-    const sign = md5Hash(signString);
-    console.log('🔐 Generated signature:', sign);
+    setPackageData(processedData);
 
-    const requestBody = new URLSearchParams({
-      customer: KUAIDI100_CONFIG.customer,
-      sign: sign,
-      param: paramString
+  } catch (error) {
+    setError(error.message);
+    setPackageData({
+      trackingNumber: trackingNumber,
+      status: 'error',
+      statusText: 'Fehler beim Laden',
+      error: error.message
     });
-
-    console.log('📤 Request body:', requestBody.toString());
-
-    const response = await fetch(KUAIDI100_CONFIG.trackingUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (compatible; TrackIt/1.0)',
-        'Accept': 'application/json'
-      },
-      body: requestBody.toString()
-    });
-
-    console.log('📡 Tracking response status:', response.status);
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const responseText = await response.text();
-    console.log('📄 Raw tracking response:', responseText);
-    
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ Failed to parse tracking response:', parseError);
-      throw new Error('Ungültige API-Antwort: ' + responseText);
-    }
-
-    console.log('📊 Parsed tracking data:', data);
-
-    // Kuaidi100 API Response Format prüfen
-    if (data.result === false || data.returnCode !== '200') {
-      const errorMsg = data.message || data.returnCode || 'Unbekannter API-Fehler';
-      throw new Error(`API Fehler: ${errorMsg}`);
-    }
-
-    if (data.message === 'ok' && data.data) {
-      console.log('✅ Tracking data successfully retrieved');
-      return data.data;
-    } else {
-      throw new Error(data.message || 'Sendung nicht gefunden oder noch nicht im System');
-    }
-  };
-
-  // Swiss Post Tracking über offizielle API
-  const fetchSwissPostData = async (trackingNumber) => {
-    try {
-      console.log('🇨🇭 Fetching Swiss Post data for:', trackingNumber);
-      
-      // Swiss Post Tracking API (öffentlich verfügbar)
-      const swissPostUrl = `https://api.swisspost.ch/v1/packages/${trackingNumber}/events`;
-      
-      console.log('📤 Swiss Post API call:', swissPostUrl);
-
-      const response = await fetch(swissPostUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'TrackIt/1.0'
-        }
-      });
-
-      console.log('📡 Swiss Post response status:', response.status);
-
-      if (!response.ok) {
-        // Fallback: Mock-Daten für Demo-Zwecke
-        console.log('⚠️ Swiss Post API nicht verfügbar, verwende Demo-Daten');
-        return {
-          state: '2', // in_transit
-          ischeck: '1',
-          data: [
-            {
-              ftime: new Date().toISOString().slice(0, 16).replace('T', ' '),
-              context: '【Zürich Briefzentrum】Sendung wird bearbeitet und für die Zustellung vorbereitet'
-            },
-            {
-              ftime: new Date(Date.now() - 86400000).toISOString().slice(0, 16).replace('T', ' '),
-              context: '【Basel Sortierzentrum】Sendung ist im Sortierzentrum angekommen'
-            },
-            {
-              ftime: new Date(Date.now() - 172800000).toISOString().slice(0, 16).replace('T', ' '),
-              context: '【Bern Post】Sendung wurde von der Post angenommen'
-            }
-          ]
-        };
-      }
-
-      const data = await response.json();
-      console.log('📊 Swiss Post data:', data);
-
-      // Swiss Post Format zu Kuaidi100 Format konvertieren
-      return {
-        state: '2', // Standardmäßig "in_transit"
-        ischeck: '1',
-        data: data.events ? data.events.map(event => ({
-          ftime: event.timestamp,
-          context: event.description
-        })) : []
-      };
-      
-    } catch (error) {
-      // Fallback zu Demo-Daten (ohne Error-Log)
-      console.log('ℹ️ Using Swiss Post demo data (API not accessible)');
-      
-      return {
-        state: '2',
-        ischeck: '1',
-        data: [
-          {
-            ftime: new Date().toISOString().slice(0, 16).replace('T', ' '),
-            context: '【Swiss Post】Sendung wird bearbeitet - Demo-Modus'
-          }
-        ]
-      };
-    }
-  };
-
-  // Kombinierte Funktion: Manual Carrier oder Auto-Detection + Tracking
-  const trackShipment = async () => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      
-      console.log('🚀 Starting shipment tracking for:', trackingNumber);
-      console.log('🎯 Manual carrier provided:', manualCarrier);
-      
-      let carrierInfo;
-      
-      if (manualCarrier) {
-        // Verwende manuell gewählten Carrier
-        const carrierNames = {
-          'dhl': 'DHL',
-          'ups': 'UPS', 
-          'fedex': 'FedEx',
-          'swisspost': 'Swiss Post',
-          'chinapost': 'China Post',
-          'tnt': 'TNT',
-          'deutschepost': 'Deutsche Post',
-          'hermes': 'Hermes',
-          'dpd': 'DPD'
-        };
-        
-        carrierInfo = {
-          code: manualCarrier,
-          name: carrierNames[manualCarrier] || manualCarrier.toUpperCase(),
-          confidence: 5 // Höchste Konfidenz für manuell gewählte
-        };
-        
-        console.log('✅ Using manual carrier:', carrierInfo);
-        setDetectedCarrier(carrierInfo);
-      } else {
-        // Schritt 1: Carrier automatisch erkennen
-        carrierInfo = await detectCarrier(trackingNumber);
-        setDetectedCarrier(carrierInfo);
-        console.log('✅ Carrier auto-detected:', carrierInfo);
-      }
-      
-      // Kurze Pause für UX (nur bei Auto-Detection)
-      if (!manualCarrier) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      
-      // Schritt 2: Tracking-Daten holen
-      const trackingInfo = await fetchTrackingData(trackingNumber, carrierInfo.code);
-      
-      // Schritt 3: Daten verarbeiten und formatieren
-      const processedData = {
-        trackingNumber: trackingNumber,
-        carrier: carrierInfo.name,
-        carrierCode: carrierInfo.code,
-        status: getStatusFromState(trackingInfo.state),
-        statusText: getStatusText(trackingInfo.state),
-        isCheck: trackingInfo.ischeck === '1',
-        timeline: trackingInfo.data ? trackingInfo.data.map((item, index) => ({
-          date: item.ftime,
-          location: extractLocation(item.context),
-          status: getTimelineStatus(item.context, index === 0),
-          description: item.context,
-          icon: getTimelineIcon(item.context, index === 0),
-          isActive: index === 0
-        })).reverse() : [], // Neueste zuerst
-        currentLocation: trackingInfo.data && trackingInfo.data.length > 0 ? 
-          extractLocation(trackingInfo.data[0].context) : null,
-        confidence: carrierInfo.confidence,
-        lastUpdate: new Date().toISOString(),
-        isManualCarrier: !!manualCarrier
-      };
-
-      setPackageData(processedData);
-      console.log('🎉 Tracking completed successfully:', processedData);
-      
-    } catch (error) {
-      console.error('💥 Tracking failed:', error);
-      setError(error.message);
-      setPackageData({
-        trackingNumber: trackingNumber,
-        status: 'error',
-        statusText: 'Fehler beim Laden',
-        error: error.message
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Hilfsfunktionen für Datenverarbeitung
   const extractLocation = (context) => {
@@ -725,7 +220,7 @@ export default function DetailScreen({ navigation, route }) {
       /【(.+?)】/, // Chinesischer Stil: 【Shanghai】
       /\[(.+?)\]/, // Eckige Klammern: [Berlin]
       /^(.+?)[,:]/, // Vor Komma/Doppelpunkt
-      /(\w+(?:\s+\w+)*(?:\s+(?:Sortierzentrum|Depot|Center|Hub|Station)))/i, // Depot-Namen
+      /(\w+(?:\s+\w+)*(?:\s+(?:Sortierzentrum|Depot|Center|Hub|Station|Zustellung)))/i, // Depot-Namen
     ];
     
     for (const pattern of patterns) {
@@ -764,25 +259,30 @@ export default function DetailScreen({ navigation, route }) {
     }
   };
 
+  // ✅ SWISS POST SPEZIFISCHE STATUS-ERKENNUNG
   const getTimelineStatus = (context, isLatest) => {
     const lowerContext = context.toLowerCase();
-    if (lowerContext.includes('delivered') || lowerContext.includes('zugestellt') || lowerContext.includes('签收')) return 'Zugestellt';
-    if (lowerContext.includes('transit') || lowerContext.includes('unterwegs') || lowerContext.includes('运输中')) return 'Unterwegs';
-    if (lowerContext.includes('picked') || lowerContext.includes('abgeholt') || lowerContext.includes('已取件')) return 'Abgeholt';
-    if (lowerContext.includes('sorted') || lowerContext.includes('sortiert') || lowerContext.includes('分拣')) return 'Sortiert';
-    if (lowerContext.includes('arrived') || lowerContext.includes('angekommen') || lowerContext.includes('到达')) return 'Angekommen';
-    if (lowerContext.includes('出库') || lowerContext.includes('发出')) return 'Versandt';
+    
+    // Swiss Post spezifische Begriffe
+    if (lowerContext.includes('zugestellt') || lowerContext.includes('abgeholt durch empfänger')) return 'Zugestellt';
+    if (lowerContext.includes('verlad in zustellfahrzeug')) return 'Wird zugestellt';
+    if (lowerContext.includes('bearbeitung in') || lowerContext.includes('sortierzentrum')) return 'In Bearbeitung';
+    if (lowerContext.includes('annahme') || lowerContext.includes('einlieferung')) return 'Angenommen';
+    if (lowerContext.includes('transport') || lowerContext.includes('unterwegs')) return 'Unterwegs';
+    
     return isLatest ? 'Aktuell' : 'Verarbeitet';
   };
 
+  // ✅ SWISS POST SPEZIFISCHE ICONS
   const getTimelineIcon = (context, isLatest) => {
     const lowerContext = context.toLowerCase();
-    if (lowerContext.includes('delivered') || lowerContext.includes('zugestellt') || lowerContext.includes('签收')) return 'checkmark-circle';
-    if (lowerContext.includes('transit') || lowerContext.includes('unterwegs') || lowerContext.includes('运输中')) return 'car';
-    if (lowerContext.includes('picked') || lowerContext.includes('abgeholt') || lowerContext.includes('已取件')) return 'cube';
-    if (lowerContext.includes('sorted') || lowerContext.includes('sortiert') || lowerContext.includes('分拣')) return 'git-network';
-    if (lowerContext.includes('arrived') || lowerContext.includes('angekommen') || lowerContext.includes('到达')) return 'location';
-    if (lowerContext.includes('出库') || lowerContext.includes('发出')) return 'send';
+    
+    if (lowerContext.includes('zugestellt') || lowerContext.includes('abgeholt')) return 'checkmark-circle';
+    if (lowerContext.includes('verlad in zustellfahrzeug')) return 'car';
+    if (lowerContext.includes('bearbeitung') || lowerContext.includes('sortierung')) return 'git-network';
+    if (lowerContext.includes('annahme') || lowerContext.includes('einlieferung')) return 'cube';
+    if (lowerContext.includes('transport')) return 'airplane';
+    
     return isLatest ? 'radio-button-on' : 'radio-button-off';
   };
 
@@ -837,22 +337,15 @@ export default function DetailScreen({ navigation, route }) {
         >
           <View style={styles.loadingContent}>
             <View style={styles.loadingIcon}>
-              <Ionicons name="search" size={48} color="#fff" />
+              <Ionicons name="mail" size={48} color="#fff" />
             </View>
             <Text style={styles.loadingText}>
-              {detectedCarrier 
-                ? 'Lade Tracking-Daten...' 
-                : manualCarrier 
-                  ? `Verwende ${manualCarrier.toUpperCase()}...`
-                  : 'Erkenne Paketdienst...'
-              }
+              Lade Swiss Post Daten...
             </Text>
             <Text style={styles.loadingSubtext}>{trackingNumber}</Text>
-            {detectedCarrier && (
-              <Text style={styles.loadingCarrier}>
-                📦 {detectedCarrier.name} {packageData?.isManualCarrier ? '(manuell gewählt)' : '(erkannt)'}
-              </Text>
-            )}
+            <Text style={styles.loadingCarrier}>
+              📦 Swiss Post
+            </Text>
           </View>
         </LinearGradient>
       </View>
@@ -874,7 +367,7 @@ export default function DetailScreen({ navigation, route }) {
           >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Sendungsverfolgung</Text>
+          <Text style={styles.headerTitle}>Swiss Post Tracking</Text>
         </LinearGradient>
         
         <View style={styles.errorContainer}>
@@ -883,7 +376,7 @@ export default function DetailScreen({ navigation, route }) {
           <Text style={styles.errorSubtext}>{error}</Text>
           <Text style={styles.errorDetails}>
             Sendungsnummer: {trackingNumber}
-            {detectedCarrier && `\nErkannter Carrier: ${detectedCarrier.name}`}
+            {'\n'}Carrier: Swiss Post
           </Text>
           <TouchableOpacity 
             style={styles.retryButton}
@@ -917,7 +410,7 @@ export default function DetailScreen({ navigation, route }) {
           >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Sendungsverfolgung</Text>
+          <Text style={styles.headerTitle}>Swiss Post Tracking</Text>
         </LinearGradient>
 
         <ScrollView
@@ -942,12 +435,10 @@ export default function DetailScreen({ navigation, route }) {
                   <Text style={styles.trackingNumberText}>#{packageData.trackingNumber}</Text>
                   <View style={styles.carrierContainer}>
                     <Text style={styles.carrierText}>{packageData.carrier}</Text>
-                    {packageData.confidence > 1 && (
-                      <View style={styles.confidenceBadge}>
-                        <Ionicons name="checkmark" size={12} color="#10B981" />
-                        <Text style={styles.confidenceText}>Auto-erkannt</Text>
-                      </View>
-                    )}
+                    <View style={styles.confidenceBadge}>
+                      <Ionicons name="checkmark" size={12} color="#10B981" />
+                      <Text style={styles.confidenceText}>Swiss Post</Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -961,12 +452,10 @@ export default function DetailScreen({ navigation, route }) {
                 </View>
               )}
 
-              {packageData.isCheck && (
-                <View style={styles.verificationInfo}>
-                  <Ionicons name="shield-checkmark" size={16} color="#10B981" />
-                  <Text style={styles.verificationText}>Sendung verifiziert</Text>
-                </View>
-              )}
+              <View style={styles.verificationInfo}>
+                <Ionicons name="shield-checkmark" size={16} color="#10B981" />
+                <Text style={styles.verificationText}>Swiss Post verifiziert</Text>
+              </View>
             </View>
 
             {/* Timeline */}
@@ -1007,109 +496,46 @@ export default function DetailScreen({ navigation, route }) {
                 ))}
               </View>
             )}
-
-            {/* Delivery Estimate Card */}
-            <View style={styles.estimateCard}>
-              <View style={styles.estimateHeader}>
-                <Ionicons name="time-outline" size={24} color="#6366F1" />
-                <Text style={styles.cardTitle}>Lieferzeit-Schätzung</Text>
-              </View>
-              
-              <View style={styles.estimateContent}>
-                <Text style={styles.estimateDescription}>
-                  Berechne die voraussichtliche Lieferzeit basierend auf der aktuellen Paket-Position und deinem Standort.
-                </Text>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.estimateButton,
-                    isCalculatingEstimate && styles.estimateButtonDisabled
-                  ]}
-                  onPress={handleDeliveryEstimate}
-                  disabled={isCalculatingEstimate}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.estimateButtonContent}>
-                    {isCalculatingEstimate ? (
-                      <>
-                        <Ionicons name="refresh" size={20} color="#fff" />
-                        <Text style={styles.estimateButtonText}>Wird berechnet...</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Ionicons name="calculator-outline" size={20} color="#fff" />
-                        <Text style={styles.estimateButtonText}>Lieferzeit berechnen</Text>
-                      </>
-                    )}
-                  </View>
-                </TouchableOpacity>
-                
-                {/* Ergebnis anzeigen */}
-                {deliveryEstimate && (
-                  <View style={styles.estimateResult}>
-                    <View style={styles.estimateResultHeader}>
-                      <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                      <Text style={styles.estimateResultTitle}>Voraussichtliche Ankunft</Text>
-                    </View>
-                    <Text style={styles.estimateResultDate}>{deliveryEstimate.fullText}</Text>
-                    <View style={styles.estimateResultDetails}>
-                      <View style={styles.estimateDetailItem}>
-                        <Ionicons name="location-outline" size={16} color="#6B7280" />
-                        <Text style={styles.estimateDetailText}>
-                          Entfernung: {deliveryEstimate.distance} km
-                        </Text>
-                      </View>
-                      <View style={styles.estimateDetailItem}>
-                        <Ionicons name="time-outline" size={16} color="#6B7280" />
-                        <Text style={styles.estimateDetailText}>
-                          Geschätzte Zeit: {deliveryEstimate.hours}h
-                        </Text>
-                      </View>
-                      <View style={styles.estimateDetailItem}>
-                        <Ionicons name="shield-checkmark-outline" size={16} color="#6B7280" />
-                        <Text style={styles.estimateDetailText}>
-                          Vertrauen: {deliveryEstimate.confidence}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                )}
-                
-                {/* Fehler anzeigen */}
-                {estimateError && (
-                  <View style={styles.estimateError}>
-                    <Ionicons name="alert-circle" size={20} color="#EF4444" />
-                    <Text style={styles.estimateErrorText}>{estimateError}</Text>
-                  </View>
-                )}
-                
-                <Text style={styles.estimateDisclaimer}>
-                  * Schätzung basierend auf Standort, Tageszeit und Paketdienst. Berücksichtigt Geschäftszeiten (Mo-Sa, 8-18 Uhr).
-                </Text>
-              </View>
+          <View style={styles.estimateCard}>
+            <View style={styles.estimateHeader}>
+              <Ionicons name="time-outline" size={24} color="#6366F1" />
+              <Text style={styles.cardTitle}>Voraussichtliche Zustellung</Text>
             </View>
+            <View style={styles.estimateContent}>
+              {packageData.deliveryEstimate ? (
+                <View style={styles.estimateResult}>
+                  <View style={styles.estimateResultHeader}>
+                    <Ionicons name="calendar-outline" size={24} color="#10B981" />
+                    <Text style={styles.estimateResultTitle}>Ankunft laut Swiss Post</Text>
+                  </View>
+                  <Text style={styles.estimateResultDate}>{packageData.deliveryEstimate}</Text>
+                </View>
+              ) : (
+                <Text style={styles.estimateDescription}>Kein Zustell-Datum verfügbar.</Text>
+              )}
+              <Text style={styles.estimateDisclaimer}>
+                * Datum direkt von der Swiss Post Website übernommen.
+              </Text>
+            </View>
+          </View>
 
-            {/* API Info Card */}
+            {/* Swiss Post Info Card */}
             <View style={styles.detectionCard}>
               <View style={styles.cardHeader}>
                 <Ionicons name="information-circle-outline" size={24} color="#6366F1" />
-                <Text style={styles.detectionTitle}>Tracking-Details</Text>
+                <Text style={styles.detectionTitle}>Swiss Post Details</Text>
               </View>
               <View style={styles.detectionRow}>
-                <Text style={styles.detectionLabel}>Erkannter Carrier:</Text>
-                <Text style={styles.detectionValue}>{packageData.carrier} ({packageData.carrierCode})</Text>
+                <Text style={styles.detectionLabel}>Paketdienst:</Text>
+                <Text style={styles.detectionValue}>{packageData.carrier}</Text>
               </View>
               <View style={styles.detectionRow}>
-                <Text style={styles.detectionLabel}>Erkannt durch:</Text>
-                <Text style={styles.detectionValue}>
-                  {packageData.isManualCarrier ? '👤 Manuell gewählt' : '🤖 Auto-Detection'}
-                </Text>
+                <Text style={styles.detectionLabel}>Datenquelle:</Text>
+                <Text style={styles.detectionValue}>🔧 Eigener Scraper</Text>
               </View>
               <View style={styles.detectionRow}>
                 <Text style={styles.detectionLabel}>Verifiziert:</Text>
-                <Text style={styles.detectionValue}>
-                  {packageData.isCheck ? '✅ Ja' : '❌ Nein'}
-                </Text>
+                <Text style={styles.detectionValue}>✅ Ja</Text>
               </View>
               <Text style={styles.detectionFooter}>
                 Letztes Update: {new Date(packageData.lastUpdate).toLocaleString('de-DE')}
