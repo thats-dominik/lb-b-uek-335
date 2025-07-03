@@ -9,7 +9,8 @@ import {
   Platform,
   StatusBar,
   Dimensions,
-  ScrollView
+  ScrollView,
+  Image
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,8 +73,12 @@ export default function HomeScreen({ navigation }) {
             keyboardShouldPersistTaps="handled"
           >
           <View style={styles.header}>
-            <View style={styles.iconWrapper}>
-              <Ionicons name="cube" size={48} color="#fff" />
+            <View style={styles.iconContainer}>
+              <Image 
+                source={require('../assets/icon.png')} 
+                style={[styles.appIcon, { width: 76, height: 76}]}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.title}>TrackIt</Text>
             <Text style={styles.subtitle}>
@@ -236,6 +241,28 @@ export default function HomeScreen({ navigation }) {
     </>
   );
 }
+
+const iconStyles = StyleSheet.create({
+  appIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 16, // Für abgerundete Ecken wie ein echtes App-Icon
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  iconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    // Optional: Hintergrund für besseren Kontrast
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    padding: 16,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
