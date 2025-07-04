@@ -18,7 +18,7 @@ const { width } = Dimensions.get('window');
 // ✅ NUR NOCH SWISS POST SCRAPER API
 const fetchSwissPostData = async (trackingNumber) => {
   try {
-    const response = await fetch(`http://10.73.4.33:3001/track?tracking=${trackingNumber}`);
+    const response = await fetch(`http://10.73.4.28:3001/track?tracking=${trackingNumber}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}: Swiss Post Scraper nicht erreichbar`);
     const data = await response.json();
 
